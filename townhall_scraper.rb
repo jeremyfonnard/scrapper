@@ -1,40 +1,68 @@
 require 'nokogiri'
+require 'open-uri'
 require 'http'
+require 'rspec'
 
-def get_townhall_urls
-  url = 'https://lannuaire.service-public.fr/navigation/ile-de-france/val-d-oise/mairie'
-  response = HTTP.get(url)
-  doc = Nokogiri::HTML(response.to_s)
 
-  links = page.search('//*[@id="main"]/div/div/div/article/div[3]/ul/li/div/div/p/a')  
-  puts "Townhall Links: #{townhall_links}"
-  
-  townhall_urls = []
-
-  townhall_links.each do |link|
-    townhall_urls << "https://lannuaire.service-public.fr/navigation/ile-de-france/val-d-oise/mairie#{link['href']}"
+# Étape 1: Récupérer l'email d'une mairie à partir de son URL
+def get_townhall_email(townhall_url)
+  begin
+    page = Nokogiri::HTML(URI.open(townhall_url))
+  rescue StandardError => e
+    puts "Erreur lors de l'accès à #{townhall_url}: #{e.message}"
+    return nil
   end
 
-  townhall_urls
+  # Extraire l'email
+  email = page.xpath('//*[@id="contentContactEmail"]/span[2]/a').text.strip
+  email.empty? ? nil : email
 end
 
-def get_townhall_email(townhall_urls)
-  emails = []
+# Étape 2 : Récupérer toutes les URLs et noms des mairies du Val-d'Oise
+def get_townhall_urls(department_url)
+  begin
+    page = Nokogiri::HTML(URI.open("https://lannuaire.service-public.fr/navigation/ile-de-france/val-d-oise/mairie"))
+  rescue StandardError => e
+    puts "Erreur lors de l'accès à #{department_url}: #{e.message}"
+    return []
+  end
 
-  townhall_urls.each do |townhall_url|
-    response = HTTP.get(townhall_url)
-    doc = Nokogiri::HTML(response.to_s)
+  # Trouver les liens et noms des mairies
+  links = page.xpath('//p[@class="fr-mb-0"]/a[@class="fr-link"]')
+  urls_and_names = links.map do |link|
+    {
+      name: link.text.strip,
+      url: URI.join("https://lannuaire.service-public.fr/navigation/ile-de-france/val-d-oise/mairie", link['href']).to_s
+    }
+  end
+  urls_and_names
+end
 
-    email = doc.xpath('//*[@id="contentContactEmail"]/span[2]/a').text.strip
-    name = doc.xpath('/html/body/div/main/section[1]/div/div/div/h1').text.strip    
+# Étape 3 : Récupérer les emails pour toutes les mairies
+def get_all_townhall_emails(department_url)
+  towns = get_townhall_urls("https://lannuaire.service-public.fr/navigation/ile-de-france/val-d-oise/mairie")
+  emails = {}
 
-    emails << {name => email} unless email.empty?
+  towns.each do |town|
+    email = get_townhall_email(town[:url])
+    if email
+      puts "#{town[:name]} : #{email}"
+      emails[town[:name]] = email
+    else
+      puts "Aucun email trouvé pour #{town[:name]}"
+    end
   end
 
   emails
 end
 
-townhall_urls = get_townhall_urls
-emails = get_townhall_email(townhall_urls)
+# Tester avec l'URL de l'annuaire des mairies du Val-d'Oise
+department_url = "https://lannuaire.service-public.fr/navigation/ile-de-france/val-d-oise/mairie"
+emails = get_all_townhall_emails(department_url)
 
-puts emails
+puts "\nListe des emails trouvés :"
+emails.each do |name, email|
+  puts "#{name} : #{email}"
+end
+
+
