@@ -1,0 +1,5 @@
+# .gitignore
+/.bundle
+/vendor
+/log
+/tmp
